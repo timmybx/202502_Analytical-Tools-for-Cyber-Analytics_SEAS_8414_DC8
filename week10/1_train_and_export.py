@@ -5,7 +5,6 @@ import math
 import h2o
 from h2o.automl import H2OAutoML
 import os
-import shutil
 
 def get_entropy(s):
     p, lns = {}, float(len(s))
