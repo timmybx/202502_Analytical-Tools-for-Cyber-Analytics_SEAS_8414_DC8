@@ -1,2 +1,8 @@
-week10/model/
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Generated artifacts
 week10/models/
+week10/model/
