@@ -14,12 +14,14 @@ best_model = h2o.load_model(model_path)
 
 # Load test data for explanation
 test_df = pd.read_csv("dga_dataset_train.csv")
-X_test = test_df[['length', 'entropy']]
+X_test = test_df[["length", "entropy"]]
+
 
 def predict_wrapper(data):
     h2o_df = h2o.H2OFrame(pd.DataFrame(data, columns=X_test.columns))
     predictions = best_model.predict(h2o_df)
-    return predictions.as_data_frame()['dga']
+    return predictions.as_data_frame()["dga"]
+
 
 explainer = shap.KernelExplainer(predict_wrapper, X_test.head(50))
 shap_values = explainer.shap_values(X_test.head(50))
@@ -30,9 +32,14 @@ plt.savefig("shap_summary.png")
 plt.close()
 
 print("Displaying SHAP Force Plot (Local Explanation for first instance)...")
-shap.force_plot(explainer.expected_value, shap_values[0,:], X_test.iloc[0,:], show=False, matplotlib=True)
+shap.force_plot(
+    explainer.expected_value,
+    shap_values[0, :],
+    X_test.iloc[0, :],
+    show=False,
+    matplotlib=True,
+)
 plt.savefig("shap_force.png")
 plt.close()
 
 h2o.shutdown()
-

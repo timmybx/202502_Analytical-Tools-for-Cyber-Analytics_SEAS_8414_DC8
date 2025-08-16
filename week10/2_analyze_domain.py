@@ -10,7 +10,8 @@ import asyncio
 import pandas as pd
 import h2o
 import shap
-    
+
+
 # --- dynamic import helpers (filenames start with digits) ---
 def _load_module(file_name: str, module_name: str):
     here = Path(__file__).resolve().parent
@@ -20,12 +21,15 @@ def _load_module(file_name: str, module_name: str):
     spec.loader.exec_module(mod)
     return mod
 
+
 def _load_train_export_module():
     return _load_module("1_train_and_export.py", "train_export_mod")
+
 
 def _load_genai_module():
     # professor’s helper provides: async def generate_playbook(xai_findings, api_key)
     return _load_module("4_generate_prescriptive_playbook.py", "genai_mod")
+
 
 # --- scoring with MOJO (short-lived H2O cluster) ---
 def _predict_with_mojo(mojo_zip_path: str, length: int, entropy: float):
@@ -40,7 +44,8 @@ def _predict_with_mojo(mojo_zip_path: str, length: int, entropy: float):
 
         # Keep only numeric prob columns; exclude the 'predict' string column.
         prob_cols = [
-            c for c in pred_df.columns
+            c
+            for c in pred_df.columns
             if c.lower() != "predict" and pd.api.types.is_numeric_dtype(pred_df[c])
         ]
         probs = {c: float(pred_df.loc[0, c]) for c in prob_cols}
@@ -73,11 +78,15 @@ def _local_shap(native_model_path: str, background_csv: str, instance_df: pd.Dat
             if "dga" in predictions.columns:
                 return predictions["dga"].values
             # fallback if columns are p0/p1 (keeps it robust without changing the lab’s intent)
-            num_cols = [c for c in predictions.columns if pd.api.types.is_numeric_dtype(predictions[c])]
+            num_cols = [
+                c
+                for c in predictions.columns
+                if pd.api.types.is_numeric_dtype(predictions[c])
+            ]
             return predictions[num_cols[0]].values
 
         explainer = shap.KernelExplainer(predict_wrapper, X_bg)
-        shap_vals = explainer.shap_values(instance_df[feats])   # <-- ONE row only
+        shap_vals = explainer.shap_values(instance_df[feats])  # <-- ONE row only
 
         # shap_vals for a single row is a length-2 vector in our case (length, entropy)
         arr = shap_vals[0] if hasattr(shap_vals, "__len__") else [shap_vals]
@@ -86,7 +95,9 @@ def _local_shap(native_model_path: str, background_csv: str, instance_df: pd.Dat
         h2o.cluster().shutdown(prompt=False)
 
 
-def _build_xai_findings(domain: str, length: int, entropy: float, probs: dict, shap_map: dict) -> str:
+def _build_xai_findings(
+    domain: str, length: int, entropy: float, probs: dict, shap_map: dict
+) -> str:
     # Use the highest available probability as "confidence"
     conf = max(probs.values()) if probs else None
     conf_str = f"{round(conf * 100.0, 1)}%" if conf is not None else "high"
@@ -97,27 +108,44 @@ def _build_xai_findings(domain: str, length: int, entropy: float, probs: dict, s
     parts = []
     parts.append("- Alert: Potential DGA domain detected.")
     parts.append(f"- Domain: '{domain}'")
-    parts.append(f"- AI Model Explanation (from SHAP): The model flagged this domain with {conf_str} confidence.")
+    parts.append(
+        f"- AI Model Explanation (from SHAP): The model flagged this domain with {conf_str} confidence."
+    )
     parts.append("  The classification was primarily driven by:")
     if s_ent is not None:
-        parts.append(f"  - A high 'entropy' value of {round(entropy, 3)} "
-                     f"(SHAP contribution: {round(s_ent, 4)}), pushing towards 'dga'.")
+        parts.append(
+            f"  - A high 'entropy' value of {round(entropy, 3)} "
+            f"(SHAP contribution: {round(s_ent, 4)}), pushing towards 'dga'."
+        )
     if s_len is not None:
-        parts.append(f"  - A high 'length' value of {length} "
-                     f"(SHAP contribution: {round(s_len, 4)}), pushing towards 'dga'.")
+        parts.append(
+            f"  - A high 'length' value of {length} "
+            f"(SHAP contribution: {round(s_len, 4)}), pushing towards 'dga'."
+        )
     return " ".join(parts)
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Train/export model, score a domain, and (if DGA) print a prescriptive playbook.")
-    parser.add_argument("--domain", required=True, help="Domain name to analyze, e.g. kq3v9z7j1x5f8g2h.info")
+    parser = argparse.ArgumentParser(
+        description="Train/export model, score a domain, and (if DGA) print a prescriptive playbook."
+    )
+    parser.add_argument(
+        "--domain",
+        required=True,
+        help="Domain name to analyze, e.g. kq3v9z7j1x5f8g2h.info",
+    )
     args = parser.parse_args()
 
     train_export_mod = _load_train_export_module()
     genai_mod = _load_genai_module()
 
     # 1) Train/export exactly as-is (Part 1)
-    csv_path = train_export_mod.generate_training_csv('dga_dataset_train.csv', n_legit=100, n_dga=100)
-    mojo_path, native_model_path, leaderboard_csv = train_export_mod.run_automl(csv_path, models_dir="./models")
+    csv_path = train_export_mod.generate_training_csv(
+        "dga_dataset_train.csv", n_legit=100, n_dga=100
+    )
+    mojo_path, native_model_path, leaderboard_csv = train_export_mod.run_automl(
+        csv_path, models_dir="./models"
+    )
     print(f"[✓] MOJO: {mojo_path}")
     print(f"[✓] Native model path: {native_model_path}")
     print(f"[✓] Leaderboard CSV: {leaderboard_csv}")
@@ -141,7 +169,7 @@ def main():
         shap_map = _local_shap(
             native_model_path,
             csv_path,
-            pd.DataFrame([{"length": length, "entropy": entropy}])
+            pd.DataFrame([{"length": length, "entropy": entropy}]),
         )
 
         xai_findings = _build_xai_findings(domain, length, entropy, probs, shap_map)
@@ -151,8 +179,12 @@ def main():
             print("\n---")
             print("🚨 Error: GOOGLE_API_KEY environment variable not set.")
             print("To run this step, set your API key:")
-            print("\nFor Linux/macOS, use:\n  export GOOGLE_API_KEY='YOUR_API_KEY_HERE'")
-            print("\nFor Windows (PowerShell), use:\n  $env:GOOGLE_API_KEY=\"YOUR_API_KEY_HERE\"")
+            print(
+                "\nFor Linux/macOS, use:\n  export GOOGLE_API_KEY='YOUR_API_KEY_HERE'"
+            )
+            print(
+                '\nFor Windows (PowerShell), use:\n  $env:GOOGLE_API_KEY="YOUR_API_KEY_HERE"'
+            )
             print("---")
             return
 
@@ -161,6 +193,7 @@ def main():
         print(playbook)
     else:
         print("\nNo playbook generated (prediction = legit).")
+
 
 if __name__ == "__main__":
     main()

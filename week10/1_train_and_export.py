@@ -6,30 +6,38 @@ import h2o
 from h2o.automl import H2OAutoML
 import os
 
+
 def get_entropy(s):
     p, lns = {}, float(len(s))
     for c in s:
         p[c] = p.get(c, 0) + 1
-    return -sum(count/lns * math.log(count/lns, 2) for count in p.values())
+    return -sum(count / lns * math.log(count / lns, 2) for count in p.values())
 
-def generate_training_csv(out_path='dga_dataset_train.csv', n_legit=100, n_dga=100):
+
+def generate_training_csv(out_path="dga_dataset_train.csv", n_legit=100, n_dga=100):
     """Create a simple DGA vs legit training CSV."""
-    header = ['domain', 'length', 'entropy', 'class']
+    header = ["domain", "length", "entropy", "class"]
     data = []
 
     # Legitimate domains
-    legit_domains = ['google', 'facebook', 'amazon', 'github', 'wikipedia', 'microsoft']
+    legit_domains = ["google", "facebook", "amazon", "github", "wikipedia", "microsoft"]
     for _ in range(n_legit):
         domain = random.choice(legit_domains) + ".com"
-        data.append([domain, len(domain), get_entropy(domain), 'legit'])
+        data.append([domain, len(domain), get_entropy(domain), "legit"])
 
     # DGA-like domains
     for _ in range(n_dga):
         length = random.randint(15, 25)
-        domain = ''.join(random.choice('abcdefghijklmnopqrstuvwxyz0123456789') for _ in range(length)) + ".com"
-        data.append([domain, len(domain), get_entropy(domain), 'dga'])
+        domain = (
+            "".join(
+                random.choice("abcdefghijklmnopqrstuvwxyz0123456789")
+                for _ in range(length)
+            )
+            + ".com"
+        )
+        data.append([domain, len(domain), get_entropy(domain), "dga"])
 
-    with open(out_path, 'w', newline='') as f:
+    with open(out_path, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(header)
         writer.writerows(data)
@@ -37,19 +45,23 @@ def generate_training_csv(out_path='dga_dataset_train.csv', n_legit=100, n_dga=1
     print(f"{out_path} created successfully.")
     return out_path
 
-def run_automl(csv_path, models_dir="./models", model_zip_dir="./model", leader_name="DGA_Leader"):
+
+def run_automl(
+    csv_path, models_dir="./models", model_zip_dir="./model", leader_name="DGA_Leader"
+):
     """Run H2O AutoML on the given CSV and save artifacts.
     Returns:
         (mojo_path, model_dir_path, leaderboard_csv_path)
     """
     import shutil
+
     os.makedirs(models_dir, exist_ok=True)
     os.makedirs(model_zip_dir, exist_ok=True)
 
     h2o.init()
     train = h2o.import_file(csv_path)
-    x = ['length', 'entropy']  # Features
-    y = "class"                # Target
+    x = ["length", "entropy"]  # Features
+    y = "class"  # Target
     train[y] = train[y].asfactor()
 
     aml = H2OAutoML(max_models=20, max_runtime_secs=120, seed=1, nfolds=3)
