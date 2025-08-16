@@ -95,10 +95,10 @@ def _build_xai_findings(domain: str, length: int, entropy: float, probs: dict, s
     s_len = shap_map.get("length")
 
     parts = []
-    parts.append(f"- Alert: Potential DGA domain detected.")
+    parts.append("- Alert: Potential DGA domain detected.")
     parts.append(f"- Domain: '{domain}'")
     parts.append(f"- AI Model Explanation (from SHAP): The model flagged this domain with {conf_str} confidence.")
-    parts.append(f"  The classification was primarily driven by:")
+    parts.append("  The classification was primarily driven by:")
     if s_ent is not None:
         parts.append(f"  - A high 'entropy' value of {round(entropy, 3)} "
                      f"(SHAP contribution: {round(s_ent, 4)}), pushing towards 'dga'.")
