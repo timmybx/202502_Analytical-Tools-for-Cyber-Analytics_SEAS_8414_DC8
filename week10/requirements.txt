@@ -1,0 +1,5 @@
+h2o>=3.46.0.7
+shap>=0.44
+pandas>=2.2
+aiohttp>=3.9
+matplotlib>=3.8
