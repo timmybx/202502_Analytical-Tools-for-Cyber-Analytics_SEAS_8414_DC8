@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 from pycaret.classification import *
 import os
-import matplotlib.pyplot as plt
 
 
 def generate_synthetic_data(num_samples=500):
@@ -90,7 +89,7 @@ def train():
 
     print("Saving model...")
     save_model(final_model, model_path)
-    print(f"Model and plot saved successfully.")
+    print("Model and plot saved successfully.")
 
 
 if __name__ == "__main__":
