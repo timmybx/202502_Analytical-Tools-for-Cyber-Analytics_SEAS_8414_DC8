@@ -1,5 +1,6 @@
 # app.py
 import os
+import re
 import time
 import pandas as pd
 import streamlit as st
@@ -43,10 +44,6 @@ PROFILE_DESC = {
 @st.cache_resource
 def load_assets():
     """Load models, plot, and build a robust cluster→profile mapping."""
-    import re
-    from pycaret.clustering import assign_model as cluster_assign
-    from pycaret.clustering import predict_model as cluster_predict
-
     cls_path = "models/phishing_url_detector"
     clu_path = "models/threat_actor_profiler"
     plot_path = "models/feature_importance.png"
@@ -80,15 +77,8 @@ def load_assets():
             cluster_features = mal.drop(columns=["label", "threat_profile"])
             expected_cols = list(cluster_features.columns)
 
-            # Try predict_model first
-            preds = cluster_predict(clu_model, data=cluster_features)
-            # Fall back to assign_model if needed
-            if not any(
-                c in preds.columns for c in ("Cluster", "Label", "prediction_label")
-            ):
-                preds = cluster_assign(clu_model, data=cluster_features)
-
-            # Find which column holds cluster ids
+            preds = predict_cluster(clu_model, data=cluster_features)
+            # Find a column that looks like cluster id
             cluster_col = next(
                 (
                     c
@@ -97,12 +87,24 @@ def load_assets():
                 ),
                 None,
             )
+            # If PyCaret used assign_model naming, try that next
+            if cluster_col is None:
+                from pycaret.clustering import assign_model as cluster_assign
+
+                preds = cluster_assign(clu_model, data=cluster_features)
+                cluster_col = next(
+                    (
+                        c
+                        for c in ("Cluster", "Label", "prediction_label")
+                        if c in preds.columns
+                    ),
+                    None,
+                )
+
             if cluster_col is not None:
                 mal["__cluster__"] = preds[cluster_col].map(_normalize_cluster_id)
-                # Keep rows where cluster id parsed successfully
                 mal = mal.dropna(subset=["__cluster__"]).copy()
                 mal["__cluster__"] = mal["__cluster__"].astype(int)
-
                 # Majority vote: cluster id -> most frequent ground-truth profile
                 cluster_map = (
                     mal.groupby("__cluster__")["threat_profile"]
@@ -145,6 +147,12 @@ with st.sidebar:
         "short_service": st.checkbox("Is it a shortened URL", value=False),
         "at_symbol": st.checkbox("URL contains '@' symbol", value=False),
         "abnormal_url": st.checkbox("Is it an abnormal URL", value=True),
+        # NEW: enrichment feature used by clustering / attribution
+        "has_political_keyword": st.checkbox(
+            "Contains political / activist keywords",
+            value=False,
+            help="e.g., topical slogans, movement names, or activist language",
+        ),
     }
 
     st.divider()
@@ -210,13 +218,13 @@ with st.status("Executing SOAR playbook...", expanded=True) as status:
     st.write(
         "▶️ **Step 1: Predictive Analysis** - Running features through classification model."
     )
-    time.sleep(1)
+    time.sleep(0.5)
     prediction = predict_cls(cls_model, data=input_data)
     is_malicious = prediction["prediction_label"].iloc[0] == 1
 
     verdict = "MALICIOUS" if is_malicious else "BENIGN"
     st.write(f"▶️ **Step 2: Verdict Interpretation** - Model predicts **{verdict}**.")
-    time.sleep(1)
+    time.sleep(0.5)
 
     actor_profile = None
     cluster_id = None
@@ -225,38 +233,35 @@ with st.status("Executing SOAR playbook...", expanded=True) as status:
         st.write(
             "▶️ **Step 3: Threat Attribution** - Assigning threat actor profile via clustering."
         )
-        # Prepare a single-row input for the clustering pipeline.
-        # Ensure it has every column the clustering model expects; fill missing with 0.
+
+        # Prepare a single-row input for clustering; fill all expected cols
         if CLUSTER_EXPECTED_COLS:
             row = {col: 0 for col in CLUSTER_EXPECTED_COLS}
-            row.update({k: v for k, v in input_dict.items() if k in row})
+            # copy classifier features that the clusterer also uses
+            for k, v in input_dict.items():
+                if k in row:
+                    row[k] = v
+            # include enrichment feature if the clusterer expects it
+            if "has_political_keyword" in row:
+                row["has_political_keyword"] = (
+                    1 if form_values["has_political_keyword"] else 0
+                )
             cluster_input = pd.DataFrame([row])
         else:
-            # Fallback: pass what we have; PyCaret may still accept
-            cluster_input = input_data.copy()
+            # Fallback: pass what we have; also include enrichment feature
+            cluster_input = pd.DataFrame(
+                [
+                    {
+                        **input_dict,
+                        "has_political_keyword": 1
+                        if form_values["has_political_keyword"]
+                        else 0,
+                    }
+                ]
+            )
 
         try:
-            # Try predict_model first; fall back to assign_model if needed
             clu_pred = predict_cluster(clu_model, data=cluster_input)
-            if not any(
-                c in clu_pred.columns for c in ("Cluster", "Label", "prediction_label")
-            ):
-                from pycaret.clustering import assign_model as cluster_assign
-
-                clu_pred = cluster_assign(clu_model, data=cluster_input)
-
-            # Normalize cluster id
-            import re
-
-            def _norm_id(v):
-                if isinstance(v, (int, float)):
-                    try:
-                        return int(v)
-                    except Exception:
-                        return None
-                m = re.search(r"-?\d+", str(v))
-                return int(m.group(0)) if m else None
-
             cluster_col = next(
                 (
                     c
@@ -265,8 +270,23 @@ with st.status("Executing SOAR playbook...", expanded=True) as status:
                 ),
                 None,
             )
+            if cluster_col is None:
+                from pycaret.clustering import assign_model as cluster_assign
+
+                clu_pred = cluster_assign(clu_model, data=cluster_input)
+                cluster_col = next(
+                    (
+                        c
+                        for c in ("Cluster", "Label", "prediction_label")
+                        if c in clu_pred.columns
+                    ),
+                    None,
+                )
+
             raw_id = clu_pred[cluster_col].iloc[0] if cluster_col else None
-            cluster_id = _norm_id(raw_id)
+            # normalize id like "Cluster 0" -> 0
+            m = re.search(r"-?\d+", str(raw_id)) if raw_id is not None else None
+            cluster_id = int(m.group(0)) if m else None
 
             if cluster_id is not None and CLUSTER_MAP:
                 base = CLUSTER_MAP.get(cluster_id)  # 'crime' | 'state' | 'hacktivist'
@@ -286,7 +306,6 @@ with st.status("Executing SOAR playbook...", expanded=True) as status:
                 state="complete",
                 expanded=False,
             )
-
     else:
         status.update(label="✅ Analysis Complete.", state="complete", expanded=False)
 
@@ -365,9 +384,13 @@ with tab4:
     else:
         if actor_profile:
             st.success(f"**Predicted Actor Profile:** {actor_profile}")
-            desc = PROFILE_DESC.get(actor_profile, "")
             if cluster_id is not None:
                 st.caption(f"(Cluster ID: {cluster_id})")
+            st.caption(
+                "Political/activist keywords present: "
+                + ("Yes" if form_values["has_political_keyword"] else "No")
+            )
+            desc = PROFILE_DESC.get(actor_profile, "")
             if desc:
                 st.write(desc)
         else:
