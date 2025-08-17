@@ -1,8 +1,11 @@
 # week8/train_model.py
 # Part 1: Threat Profile Data Generation + baseline PyCaret model training.
+# Part 2: Unsupervised clustering to build a "threat actor profiler" (3 clusters).
+#
 # - Adds "threat_profile" (state|crime|hacktivist|benign) for enrichment/clustering.
 # - Adds "has_political_keyword" feature (used for Hacktivist signal).
 # - Trains classifier ONLY on the 12 features app.py supplies at inference time.
+# - Trains a separate K-Means clustering model (k=3) on malicious rows (features only).
 
 from __future__ import annotations
 
@@ -12,14 +15,15 @@ from typing import Dict, List
 import numpy as np
 import pandas as pd
 from pycaret.classification import (
-    setup,
+    setup as cls_setup,
     compare_models,
     finalize_model,
     plot_model,
-    save_model,
+    save_model as cls_save_model,
 )
+from pycaret import clustering as pcl  # use namespace to avoid setup() name clash
 
-# ---- IMPORTANT: This must match app.py's input schema exactly ----
+# ---- IMPORTANT: Must match app.py's input schema exactly ----
 CLASSIFIER_FEATURES: List[str] = [
     "having_IP_Address",
     "URL_Length",  # -1 short, 0 normal, +1 long
@@ -30,9 +34,9 @@ CLASSIFIER_FEATURES: List[str] = [
     "having_Sub_Domain",  # -1 none, 0 one, +1 many
     "SSLfinal_State",  # -1 none, 0 suspicious, +1 trusted
     "Abnormal_URL",
-    "URL_of_Anchor",  # count-like: 0/1/2
-    "Links_in_tags",  # count-like: 0/1/2
-    "SFH",  # simple flag-ish: -1/0/1
+    "URL_of_Anchor",  # 0/1/2
+    "Links_in_tags",  # 0/1/2
+    "SFH",  # -1/0/1
 ]
 
 # Extra feature(s) reserved for enrichment/clustering (NOT used by classifier)
@@ -74,8 +78,7 @@ def _row_for_profile(
     rng: np.random.Generator, profile: str
 ) -> Dict[str, int | float | str]:
     """
-    Create one synthetic row with feature values conditioned on a threat profile.
-    Profiles:
+    Synthetic row with feature values conditioned on a threat profile.
       - "state"      (State-Sponsored)
       - "crime"      (Organized Cybercrime)
       - "hacktivist" (Hacktivist)
@@ -85,12 +88,12 @@ def _row_for_profile(
 
     if profile == "state":
         # High sophistication: valid SSL, subtle deception, longer-lived / well-formed
-        f["having_IP_Address"] = _bern_pm1(rng, 0.10)  # mostly no IP literal
-        f["URL_Length"] = _tri_choice(rng, 0.15, 0.55, 0.30)  # mostly normal/long
-        f["Shortining_Service"] = _bern_pm1(rng, 0.10)  # rarely shortened
+        f["having_IP_Address"] = _bern_pm1(rng, 0.10)
+        f["URL_Length"] = _tri_choice(rng, 0.15, 0.55, 0.30)
+        f["Shortining_Service"] = _bern_pm1(rng, 0.10)
         f["having_At_Symbol"] = _bern_pm1(rng, 0.10)
-        f["double_slash_redirecting"] = _bern_pm1(rng, 0.15)  # usually clean
-        f["Prefix_Suffix"] = _bern_pm1(rng, 0.60)  # subtle deception sometimes
+        f["double_slash_redirecting"] = _bern_pm1(rng, 0.15)
+        f["Prefix_Suffix"] = _bern_pm1(rng, 0.60)
         f["having_Sub_Domain"] = _tri_choice(rng, 0.25, 0.45, 0.30)
         f["SSLfinal_State"] = _tri_choice(rng, 0.05, 0.15, 0.80)  # mostly trusted
         f["Abnormal_URL"] = _bern_pm1(rng, 0.15)
@@ -100,7 +103,7 @@ def _row_for_profile(
         f["has_political_keyword"] = 1 if rng.random() < 0.15 else 0
 
     elif profile == "crime":
-        # Noisy: shorteners, IP in URL, abnormal structures, odd tags; short-lived feel
+        # Noisy: shorteners, IP in URL, abnormal structures; short-lived feel
         f["having_IP_Address"] = _bern_pm1(rng, 0.70)
         f["URL_Length"] = _tri_choice(rng, 0.10, 0.20, 0.70)  # skew long
         f["Shortining_Service"] = _bern_pm1(rng, 0.70)
@@ -108,9 +111,7 @@ def _row_for_profile(
         f["double_slash_redirecting"] = _bern_pm1(rng, 0.60)
         f["Prefix_Suffix"] = _bern_pm1(rng, 0.50)
         f["having_Sub_Domain"] = _tri_choice(rng, 0.20, 0.30, 0.50)
-        f["SSLfinal_State"] = _tri_choice(
-            rng, 0.50, 0.30, 0.20
-        )  # often none/suspicious
+        f["SSLfinal_State"] = _tri_choice(rng, 0.50, 0.30, 0.20)
         f["Abnormal_URL"] = _bern_pm1(rng, 0.65)
         f["URL_of_Anchor"] = _small_count(rng, 0.20, 0.40, 0.40)
         f["Links_in_tags"] = _small_count(rng, 0.20, 0.40, 0.40)
@@ -135,13 +136,13 @@ def _row_for_profile(
 
     else:  # benign
         f["having_IP_Address"] = _bern_pm1(rng, 0.05)
-        f["URL_Length"] = _tri_choice(rng, 0.40, 0.50, 0.10)  # mostly short/normal
+        f["URL_Length"] = _tri_choice(rng, 0.40, 0.50, 0.10)
         f["Shortining_Service"] = _bern_pm1(rng, 0.05)
         f["having_At_Symbol"] = _bern_pm1(rng, 0.05)
         f["double_slash_redirecting"] = _bern_pm1(rng, 0.05)
         f["Prefix_Suffix"] = _bern_pm1(rng, 0.10)
         f["having_Sub_Domain"] = _tri_choice(rng, 0.50, 0.40, 0.10)
-        f["SSLfinal_State"] = _tri_choice(rng, 0.05, 0.15, 0.80)  # mostly trusted
+        f["SSLfinal_State"] = _tri_choice(rng, 0.05, 0.15, 0.80)
         f["Abnormal_URL"] = _bern_pm1(rng, 0.05)
         f["URL_of_Anchor"] = _small_count(rng, 0.75, 0.20, 0.05)
         f["Links_in_tags"] = _small_count(rng, 0.75, 0.20, 0.05)
@@ -188,16 +189,17 @@ def main() -> None:
     data.to_csv(data_path, index=False)
     print(f"[✓] Saved training dataset with profiles to: {data_path}")
 
-    # --- Classification training; ignore enrichment fields ---
-    print("Initializing PyCaret Setup...")
-    s = setup(
+    # --------------------------
+    # Classification workflow
+    # --------------------------
+    print("Initializing PyCaret Classification Setup...")
+    _ = cls_setup(
         data=data,
         target="label",
         session_id=42,
         verbose=False,
         ignore_features=["threat_profile"] + ENRICHMENT_ONLY_FEATURES,
     )
-    _ = s  # quiet linters
 
     print("Comparing models...")
     best_model = compare_models(n_select=1, include=["rf", "et", "lightgbm"])
@@ -214,11 +216,45 @@ def main() -> None:
         os.replace(src, dst)
         print(f"[✓] Saved feature importance plot to: {dst}")
 
-    # Model artifact (must match app.py expectation)
-    print("Saving model...")
-    model_base = os.path.join("models", "phishing_url_detector")
-    save_model(final_model, model_base)
-    print(f"[✓] Model saved to: {model_base}.pkl")
+    # Model artifact (matches app.py expectation)
+    print("Saving classifier model...")
+    cls_base = os.path.join("models", "phishing_url_detector")
+    cls_save_model(final_model, cls_base)
+    print(f"[✓] Classifier saved to: {cls_base}.pkl")
+
+    # --------------------------
+    # Clustering workflow (Part 2)
+    # --------------------------
+    print("Initializing PyCaret Clustering Setup (malicious rows only)...")
+    malicious = data.loc[data["label"] == 1].copy()
+
+    # Features-only for clustering (drop label and ground-truth profile)
+    cluster_df = malicious.drop(columns=["label", "threat_profile"])
+
+    # Safety: need at least k rows and some variance
+    if len(cluster_df) < 3:
+        raise RuntimeError("Not enough malicious rows for 3 clusters.")
+
+    # Minimal, version-friendly setup (avoid params some versions don’t accept)
+    _ = pcl.setup(
+        data=cluster_df,
+        session_id=42,
+        verbose=False,
+        preprocess=True,  # let PyCaret handle scaling/encoding as needed
+        # NOTE: intentionally NOT passing 'imputation_type', 'normalize', or 'silent'
+    )
+
+    print("Creating K-Means clustering model with k=3...")
+    # Keep only supported kwargs to avoid version mismatch errors
+    kmeans3 = pcl.create_model("kmeans", num_clusters=3)
+
+    # (Optional) preview clusters for debugging:
+    # preview = pcl.assign_model(kmeans3)
+    # preview.to_csv(os.path.join("models", "cluster_preview.csv"), index=False)
+
+    print("Saving clustering model (threat actor profiler)...")
+    pcl.save_model(kmeans3, os.path.join("models", "threat_actor_profiler"))
+    print("[✓] Clustering model saved to: models/threat_actor_profiler.pkl")
 
     print("Done.")
 
