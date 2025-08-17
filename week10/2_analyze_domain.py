@@ -174,8 +174,8 @@ def main():
 
         xai_findings = _build_xai_findings(domain, length, entropy, probs, shap_map)
 
-        print (xai_findings)
-        
+        print(xai_findings)
+
         api_key = os.environ.get("GOOGLE_API_KEY")
         if not api_key:
             print("\n---")
