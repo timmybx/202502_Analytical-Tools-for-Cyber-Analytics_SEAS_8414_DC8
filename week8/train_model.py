@@ -14,19 +14,31 @@ from pycaret.classification import (
 )
 
 
-def generate_synthetic_dataset(n_samples: int = 1000, random_state: int = 42) -> pd.DataFrame:
+def generate_synthetic_dataset(
+    n_samples: int = 1000, random_state: int = 42
+) -> pd.DataFrame:
     """Create a tiny synthetic dataset for demo/training."""
     rng = np.random.default_rng(random_state)
 
     # (Optional) Keep feature names explicit; actually use them so Ruff doesn't flag "unused".
     feature_names = [
-        "having_IP_Address", "URL_Length", "Shortining_Service",
-        "having_At_Symbol", "double_slash_redirecting", "Prefix_Suffix",
-        "having_Sub_Domain", "SSLfinal_State", "Domain_registeration_length",
-        "Favicon", "port", "HTTPS_token",
+        "having_IP_Address",
+        "URL_Length",
+        "Shortining_Service",
+        "having_At_Symbol",
+        "double_slash_redirecting",
+        "Prefix_Suffix",
+        "having_Sub_Domain",
+        "SSLfinal_State",
+        "Domain_registeration_length",
+        "Favicon",
+        "port",
+        "HTTPS_token",
     ]
 
-    X = rng.integers(0, 2, size=(n_samples, len(feature_names)))  # simple binary toy features
+    X = rng.integers(
+        0, 2, size=(n_samples, len(feature_names))
+    )  # simple binary toy features
     y = rng.integers(0, 2, size=n_samples)
 
     df = pd.DataFrame(X, columns=feature_names)
