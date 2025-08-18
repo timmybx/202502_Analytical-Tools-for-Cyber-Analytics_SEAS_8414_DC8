@@ -17,7 +17,7 @@ The repo is organized by week. Each folder contains the assignment code, any pro
 
 ```
 .
-├─ week09/  # Cognitive Analytics: AI-driven decisioning—Natural Language Processing–powered Threat Intelligence & Intelligent Playbooks 
+├─ week08/  # GenAI-Powered SOAR for Phishing URL Analysis 
 ├─ week10/  # End-to-end pipeline (Detection → SHAP → GenAI playbook)
 └─ ...
 ```

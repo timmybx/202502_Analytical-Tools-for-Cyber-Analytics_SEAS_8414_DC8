@@ -32,9 +32,6 @@ CLASSIFIER_FEATURES: List[str] = [
     "has_political_keyword",  # NEW: included in classifier
 ]
 
-# (No enrichment-only fields anymore; the keyword is part of the classifier)
-ENRICHMENT_ONLY_FEATURES: List[str] = []
-
 ALL_FEATURES: List[str] = CLASSIFIER_FEATURES
 
 # ---- Focused subset for clustering/attribution ----
