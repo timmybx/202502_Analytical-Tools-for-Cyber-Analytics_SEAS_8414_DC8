@@ -177,6 +177,9 @@ if not submitted:
     st.stop()
 
 # --- Data Preparation (must match classifier training schema) ---
+# ...existing imports and setup...
+
+# --- Data Preparation (must match classifier training schema) ---
 input_dict = {
     "having_IP_Address": 1 if form_values["has_ip"] else -1,
     "URL_Length": -1
@@ -196,6 +199,8 @@ input_dict = {
     "URL_of_Anchor": 0,
     "Links_in_tags": 0,
     "SFH": 0,
+    # NEW: now part of the classifier input
+    "has_political_keyword": 1 if form_values["has_political_keyword"] else 0,
 }
 input_data = pd.DataFrame([input_dict])
 
