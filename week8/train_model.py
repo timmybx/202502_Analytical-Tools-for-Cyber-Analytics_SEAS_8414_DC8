@@ -28,17 +28,17 @@ from pycaret import clustering as pcl  # use namespace to avoid setup() name cla
 # ---- IMPORTANT: Must match app.py's classifier input schema exactly ----
 CLASSIFIER_FEATURES: List[str] = [
     "having_IP_Address",
-    "URL_Length",              # -1 short, 0 normal, +1 long
+    "URL_Length",  # -1 short, 0 normal, +1 long
     "Shortining_Service",
     "having_At_Symbol",
     "double_slash_redirecting",
     "Prefix_Suffix",
-    "having_Sub_Domain",       # -1 none, 0 one, +1 many
-    "SSLfinal_State",          # -1 none, 0 suspicious, +1 trusted
+    "having_Sub_Domain",  # -1 none, 0 one, +1 many
+    "SSLfinal_State",  # -1 none, 0 suspicious, +1 trusted
     "Abnormal_URL",
-    "URL_of_Anchor",           # 0/1/2
-    "Links_in_tags",           # 0/1/2
-    "SFH",                     # -1/0/1
+    "URL_of_Anchor",  # 0/1/2
+    "Links_in_tags",  # 0/1/2
+    "SFH",  # -1/0/1
 ]
 
 # Extra feature(s) used for enrichment/attribution (NOT used by classifier)
@@ -52,12 +52,12 @@ ALL_FEATURES: List[str] = CLASSIFIER_FEATURES + ENRICHMENT_ONLY_FEATURES
 # Using a smaller, discriminative set helps K-Means carve out clearer clusters.
 CLUSTERING_FEATURES: List[str] = [
     "has_political_keyword",  # strong Hacktivist signal
-    "SSLfinal_State",         # State vs. Crime separator
-    "Shortining_Service",     # Crime signal
-    "having_IP_Address",      # Crime signal
-    "Prefix_Suffix",          # State can use subtle deception
-    "Abnormal_URL",           # Crime + some Hacktivist
-    "URL_Length",             # Crime often long
+    "SSLfinal_State",  # State vs. Crime separator
+    "Shortining_Service",  # Crime signal
+    "having_IP_Address",  # Crime signal
+    "Prefix_Suffix",  # State can use subtle deception
+    "Abnormal_URL",  # Crime + some Hacktivist
+    "URL_Length",  # Crime often long
 ]
 
 
@@ -66,7 +66,9 @@ def _bern_pm1(rng: np.random.Generator, p_positive: float) -> int:
     return 1 if rng.random() < p_positive else -1
 
 
-def _tri_choice(rng: np.random.Generator, p_neg: float, p_zero: float, p_pos: float) -> int:
+def _tri_choice(
+    rng: np.random.Generator, p_neg: float, p_zero: float, p_pos: float
+) -> int:
     """Return -1, 0, or +1 with given probabilities (sum must be 1)."""
     x = rng.random()
     if x < p_neg:
@@ -86,7 +88,9 @@ def _small_count(rng: np.random.Generator, p0: float, p1: float, p2: float) -> i
     return 2
 
 
-def _row_for_profile(rng: np.random.Generator, profile: str) -> Dict[str, int | float | str]:
+def _row_for_profile(
+    rng: np.random.Generator, profile: str
+) -> Dict[str, int | float | str]:
     """
     Synthetic row with feature values conditioned on a threat profile.
       - "state"      (State-Sponsored)
@@ -98,66 +102,66 @@ def _row_for_profile(rng: np.random.Generator, profile: str) -> Dict[str, int | 
 
     if profile == "state":
         # High sophistication: valid SSL, subtle deception, longer-lived / well-formed
-        f["having_IP_Address"]        = _bern_pm1(rng, 0.10)
-        f["URL_Length"]               = _tri_choice(rng, 0.15, 0.55, 0.30)
-        f["Shortining_Service"]       = _bern_pm1(rng, 0.10)
-        f["having_At_Symbol"]         = _bern_pm1(rng, 0.10)
+        f["having_IP_Address"] = _bern_pm1(rng, 0.10)
+        f["URL_Length"] = _tri_choice(rng, 0.15, 0.55, 0.30)
+        f["Shortining_Service"] = _bern_pm1(rng, 0.10)
+        f["having_At_Symbol"] = _bern_pm1(rng, 0.10)
         f["double_slash_redirecting"] = _bern_pm1(rng, 0.15)
-        f["Prefix_Suffix"]            = _bern_pm1(rng, 0.60)
-        f["having_Sub_Domain"]        = _tri_choice(rng, 0.25, 0.45, 0.30)
-        f["SSLfinal_State"]           = _tri_choice(rng, 0.05, 0.15, 0.80)  # mostly trusted
-        f["Abnormal_URL"]             = _bern_pm1(rng, 0.15)
-        f["URL_of_Anchor"]            = _small_count(rng, 0.70, 0.25, 0.05)
-        f["Links_in_tags"]            = _small_count(rng, 0.70, 0.25, 0.05)
-        f["SFH"]                      = _tri_choice(rng, 0.10, 0.70, 0.20)
-        f["has_political_keyword"]    = 1 if rng.random() < 0.15 else 0
+        f["Prefix_Suffix"] = _bern_pm1(rng, 0.60)
+        f["having_Sub_Domain"] = _tri_choice(rng, 0.25, 0.45, 0.30)
+        f["SSLfinal_State"] = _tri_choice(rng, 0.05, 0.15, 0.80)  # mostly trusted
+        f["Abnormal_URL"] = _bern_pm1(rng, 0.15)
+        f["URL_of_Anchor"] = _small_count(rng, 0.70, 0.25, 0.05)
+        f["Links_in_tags"] = _small_count(rng, 0.70, 0.25, 0.05)
+        f["SFH"] = _tri_choice(rng, 0.10, 0.70, 0.20)
+        f["has_political_keyword"] = 1 if rng.random() < 0.15 else 0
 
     elif profile == "crime":
         # Noisy: shorteners, IP in URL, abnormal structures; short-lived feel
-        f["having_IP_Address"]        = _bern_pm1(rng, 0.70)
-        f["URL_Length"]               = _tri_choice(rng, 0.10, 0.20, 0.70)  # skew long
-        f["Shortining_Service"]       = _bern_pm1(rng, 0.70)
-        f["having_At_Symbol"]         = _bern_pm1(rng, 0.30)
+        f["having_IP_Address"] = _bern_pm1(rng, 0.70)
+        f["URL_Length"] = _tri_choice(rng, 0.10, 0.20, 0.70)  # skew long
+        f["Shortining_Service"] = _bern_pm1(rng, 0.70)
+        f["having_At_Symbol"] = _bern_pm1(rng, 0.30)
         f["double_slash_redirecting"] = _bern_pm1(rng, 0.60)
-        f["Prefix_Suffix"]            = _bern_pm1(rng, 0.50)
-        f["having_Sub_Domain"]        = _tri_choice(rng, 0.20, 0.30, 0.50)
-        f["SSLfinal_State"]           = _tri_choice(rng, 0.50, 0.30, 0.20)
-        f["Abnormal_URL"]             = _bern_pm1(rng, 0.65)
-        f["URL_of_Anchor"]            = _small_count(rng, 0.20, 0.40, 0.40)
-        f["Links_in_tags"]            = _small_count(rng, 0.20, 0.40, 0.40)
-        f["SFH"]                      = _tri_choice(rng, 0.60, 0.25, 0.15)
-        f["has_political_keyword"]    = 1 if rng.random() < 0.10 else 0
+        f["Prefix_Suffix"] = _bern_pm1(rng, 0.50)
+        f["having_Sub_Domain"] = _tri_choice(rng, 0.20, 0.30, 0.50)
+        f["SSLfinal_State"] = _tri_choice(rng, 0.50, 0.30, 0.20)
+        f["Abnormal_URL"] = _bern_pm1(rng, 0.65)
+        f["URL_of_Anchor"] = _small_count(rng, 0.20, 0.40, 0.40)
+        f["Links_in_tags"] = _small_count(rng, 0.20, 0.40, 0.40)
+        f["SFH"] = _tri_choice(rng, 0.60, 0.25, 0.15)
+        f["has_political_keyword"] = 1 if rng.random() < 0.10 else 0
 
     elif profile == "hacktivist":
         # Opportunistic + topical: political keyword signal; mixed hygiene
-        f["having_IP_Address"]        = _bern_pm1(rng, 0.30)
-        f["URL_Length"]               = _tri_choice(rng, 0.20, 0.40, 0.40)
-        f["Shortining_Service"]       = _bern_pm1(rng, 0.30)
-        f["having_At_Symbol"]         = _bern_pm1(rng, 0.20)
+        f["having_IP_Address"] = _bern_pm1(rng, 0.30)
+        f["URL_Length"] = _tri_choice(rng, 0.20, 0.40, 0.40)
+        f["Shortining_Service"] = _bern_pm1(rng, 0.30)
+        f["having_At_Symbol"] = _bern_pm1(rng, 0.20)
         f["double_slash_redirecting"] = _bern_pm1(rng, 0.35)
-        f["Prefix_Suffix"]            = _bern_pm1(rng, 0.35)
-        f["having_Sub_Domain"]        = _tri_choice(rng, 0.30, 0.40, 0.30)
-        f["SSLfinal_State"]           = _tri_choice(rng, 0.30, 0.30, 0.40)
-        f["Abnormal_URL"]             = _bern_pm1(rng, 0.40)
-        f["URL_of_Anchor"]            = _small_count(rng, 0.45, 0.35, 0.20)
-        f["Links_in_tags"]            = _small_count(rng, 0.45, 0.35, 0.20)
-        f["SFH"]                      = _tri_choice(rng, 0.35, 0.45, 0.20)
-        f["has_political_keyword"]    = 1 if rng.random() < 0.80 else 0  # key signal
+        f["Prefix_Suffix"] = _bern_pm1(rng, 0.35)
+        f["having_Sub_Domain"] = _tri_choice(rng, 0.30, 0.40, 0.30)
+        f["SSLfinal_State"] = _tri_choice(rng, 0.30, 0.30, 0.40)
+        f["Abnormal_URL"] = _bern_pm1(rng, 0.40)
+        f["URL_of_Anchor"] = _small_count(rng, 0.45, 0.35, 0.20)
+        f["Links_in_tags"] = _small_count(rng, 0.45, 0.35, 0.20)
+        f["SFH"] = _tri_choice(rng, 0.35, 0.45, 0.20)
+        f["has_political_keyword"] = 1 if rng.random() < 0.80 else 0  # key signal
 
     else:  # benign
-        f["having_IP_Address"]        = _bern_pm1(rng, 0.05)
-        f["URL_Length"]               = _tri_choice(rng, 0.40, 0.50, 0.10)
-        f["Shortining_Service"]       = _bern_pm1(rng, 0.05)
-        f["having_At_Symbol"]         = _bern_pm1(rng, 0.05)
+        f["having_IP_Address"] = _bern_pm1(rng, 0.05)
+        f["URL_Length"] = _tri_choice(rng, 0.40, 0.50, 0.10)
+        f["Shortining_Service"] = _bern_pm1(rng, 0.05)
+        f["having_At_Symbol"] = _bern_pm1(rng, 0.05)
         f["double_slash_redirecting"] = _bern_pm1(rng, 0.05)
-        f["Prefix_Suffix"]            = _bern_pm1(rng, 0.10)
-        f["having_Sub_Domain"]        = _tri_choice(rng, 0.50, 0.40, 0.10)
-        f["SSLfinal_State"]           = _tri_choice(rng, 0.05, 0.15, 0.80)
-        f["Abnormal_URL"]             = _bern_pm1(rng, 0.05)
-        f["URL_of_Anchor"]            = _small_count(rng, 0.75, 0.20, 0.05)
-        f["Links_in_tags"]            = _small_count(rng, 0.75, 0.20, 0.05)
-        f["SFH"]                      = _tri_choice(rng, 0.05, 0.80, 0.15)
-        f["has_political_keyword"]    = 0
+        f["Prefix_Suffix"] = _bern_pm1(rng, 0.10)
+        f["having_Sub_Domain"] = _tri_choice(rng, 0.50, 0.40, 0.10)
+        f["SSLfinal_State"] = _tri_choice(rng, 0.05, 0.15, 0.80)
+        f["Abnormal_URL"] = _bern_pm1(rng, 0.05)
+        f["URL_of_Anchor"] = _small_count(rng, 0.75, 0.20, 0.05)
+        f["Links_in_tags"] = _small_count(rng, 0.75, 0.20, 0.05)
+        f["SFH"] = _tri_choice(rng, 0.05, 0.80, 0.15)
+        f["has_political_keyword"] = 0
 
     f["threat_profile"] = profile
     f["label"] = 0 if profile == "benign" else 1
@@ -235,7 +239,9 @@ def main() -> None:
     # --------------------------
     # Clustering workflow (Part 2)
     # --------------------------
-    print("Initializing PyCaret Clustering Setup (malicious rows only, focused features)...")
+    print(
+        "Initializing PyCaret Clustering Setup (malicious rows only, focused features)..."
+    )
     malicious = data.loc[data["label"] == 1].copy()
 
     # Focused, discriminative features for clustering
