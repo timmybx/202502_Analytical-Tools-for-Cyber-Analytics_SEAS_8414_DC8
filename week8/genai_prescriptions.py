@@ -1,9 +1,10 @@
 # genai_prescriptions.py
+import json
+
 import google.generativeai as genai
 import openai
 import requests
 import streamlit as st
-import json
 
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])

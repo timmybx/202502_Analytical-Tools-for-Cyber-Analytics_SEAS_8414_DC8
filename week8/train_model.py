@@ -6,14 +6,18 @@ from typing import Dict, List
 
 import numpy as np
 import pandas as pd
+from pycaret import clustering as pcl  # use namespace to avoid setup() name clash
 from pycaret.classification import (
-    setup as cls_setup,
     compare_models,
     finalize_model,
     plot_model,
+)
+from pycaret.classification import (
     save_model as cls_save_model,
 )
-from pycaret import clustering as pcl  # use namespace to avoid setup() name clash
+from pycaret.classification import (
+    setup as cls_setup,
+)
 
 # ---- Classifier input schema (now includes has_political_keyword) ----
 CLASSIFIER_FEATURES: List[str] = [

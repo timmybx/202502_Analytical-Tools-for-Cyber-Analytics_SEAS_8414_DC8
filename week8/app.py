@@ -2,16 +2,21 @@
 import os
 import re
 import time
+
 import pandas as pd
 import streamlit as st
 
 # PyCaret imports (alias to avoid name collisions)
 from pycaret.classification import (
     load_model as load_cls_model,
+)
+from pycaret.classification import (
     predict_model as predict_cls,
 )
 from pycaret.clustering import (
     load_model as load_cluster_model,
+)
+from pycaret.clustering import (
     predict_model as predict_cluster,
 )
 
