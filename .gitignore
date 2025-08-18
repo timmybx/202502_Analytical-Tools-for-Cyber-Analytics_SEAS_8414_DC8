@@ -6,3 +6,6 @@ __pycache__/
 # Generated artifacts
 week10/models/
 week10/model/
+week8/logs.log
+week10/models/
+week8/.streamlit/secrets.toml
